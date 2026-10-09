@@ -1,0 +1,126 @@
+@baseUrl = http://localhost:5080
+
+# Start the API first:  dotnet run --project src/NotificationApi --launch-profile http
+# Run the requests top to bottom. Data is in memory, so restart the API to start clean.
+
+### 1. Create - Low priority (201)
+POST {{baseUrl}}/api/notifications
+Content-Type: application/json
+
+{
+  "customerId": "CUST-101",
+  "type": "Email",
+  "recipient": "customer@example.com",
+  "subject": "Newsletter",
+  "message": "Our monthly newsletter is out.",
+  "priority": "Low"
+}
+
+### 2. Create - Normal priority (201). Named so later requests can reuse its ID.
+# @name createNormal
+POST {{baseUrl}}/api/notifications
+Content-Type: application/json
+
+{
+  "customerId": "CUST-101",
+  "type": "Email",
+  "recipient": "customer@example.com",
+  "subject": "Order Confirmed",
+  "message": "Your order has been confirmed.",
+  "priority": "Normal"
+}
+
+### 3. Create - High priority (201). Created last but must be sent first.
+POST {{baseUrl}}/api/notifications
+Content-Type: application/json
+
+{
+  "customerId": "CUST-101",
+  "type": "Email",
+  "recipient": "customer@example.com",
+  "subject": "Password Reset",
+  "message": "Use this link to reset your password.",
+  "priority": "High"
+}
+
+### 4. Duplicate of request 2 (409)
+POST {{baseUrl}}/api/notifications
+Content-Type: application/json
+
+{
+  "customerId": "CUST-101",
+  "type": "Email",
+  "recipient": "customer@example.com",
+  "subject": "Order Confirmed",
+  "message": "Your order has been confirmed.",
+  "priority": "Normal"
+}
+
+### 5. Create - future delivery time (201). Stays Pending when processed.
+POST {{baseUrl}}/api/notifications
+Content-Type: application/json
+
+{
+  "customerId": "CUST-202",
+  "type": "Email",
+  "recipient": "other@example.com",
+  "subject": "Reminder",
+  "message": "Your subscription renews soon.",
+  "priority": "High",
+  "requestedDeliveryTime": "2030-01-01T12:30:00Z"
+}
+
+### 6. Invalid - several problems at once (400 with all field errors)
+POST {{baseUrl}}/api/notifications
+Content-Type: application/json
+
+{
+  "customerId": "",
+  "type": "Sms",
+  "recipient": "not-an-email",
+  "priority": "Urgent",
+  "requestedDeliveryTime": "2020-01-01T00:00:00Z"
+}
+
+### 7. Invalid - bad email address (400)
+POST {{baseUrl}}/api/notifications
+Content-Type: application/json
+
+{
+  "customerId": "CUST-101",
+  "type": "Email",
+  "recipient": "customer@localhost",
+  "message": "Hello",
+  "priority": "Normal"
+}
+
+### 8. Invalid - malformed JSON (400)
+POST {{baseUrl}}/api/notifications
+Content-Type: application/json
+
+{ "customerId":
+
+### 9. Get by ID - the notification from request 2 (200, status Pending)
+GET {{baseUrl}}/api/notifications/{{createNormal.response.body.$.data.id}}
+
+### 10. Get by ID - unknown ID (404)
+GET {{baseUrl}}/api/notifications/00000000-0000-0000-0000-000000000001
+
+### 11. Get by customer - CUST-101 (200, three Pending, newest first)
+GET {{baseUrl}}/api/customers/CUST-101/notifications
+
+### 12. Process pending (200: processed 3, sent 3, failed 0).
+# The API console log shows the send order: Password Reset, Order Confirmed, Newsletter.
+POST {{baseUrl}}/api/notifications/process
+
+### 13. Process again (200: processed 0 - nothing is sent twice)
+POST {{baseUrl}}/api/notifications/process
+
+### 14. Get by customer - CUST-101 again (200, all three now Sent)
+GET {{baseUrl}}/api/customers/CUST-101/notifications
+
+### 15. Get by customer - CUST-202 (200, still Pending because it is due in 2030)
+GET {{baseUrl}}/api/customers/CUST-202/notifications
+
+### 16. Get by customer - unknown customer (200, empty list)
+GET {{baseUrl}}/api/customers/NOBODY/notifications
